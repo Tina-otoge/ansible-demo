@@ -1,0 +1,36 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+
+    - name: Check if CRB is enabled
+      command: dnf repolist crb
+      register: _crb_check
+      changed_when: false
+
+    - name: Enable CRB
+      command: dnf config-manager --set-enabled crb
+      when: not _crb_check.stdout.endswith("enabled")
+
+    - set_fact:
+        packages:
+          - epel-release
+          - net-tools
+          - systemd-container
+
+    - name: Install extra packages
+      package:
+        name: "{{ packages }}"
+
+    - name: Allow wheel users to perform machinectl logins
+      copy:
+        content: |
+          polkit.addRule(function(action, subject) {
+            if(action.id == "org.freedesktop.machine1.host-shell" &&
+              subject.isInGroup("wheel")) {
+                return polkit.Result.AUTH_SELF_KEEP;
+            }
+          });
+        dest: /etc/polkit-1/rules.d/60-machinectl-fast-user-auth.rules

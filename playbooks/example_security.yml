@@ -1,0 +1,28 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Disable SSH root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+
+    - name: Disable password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+
+    - name: Install fail2ban
+      package:
+        name: fail2ban
+
+    - name: Configure fail2ban
+      copy:
+        content: |
+          [DEFAULT]
+          bantime = 3600
+
+          [sshd]
+          enabled = true
+        dest: /etc/fail2ban/jail.local

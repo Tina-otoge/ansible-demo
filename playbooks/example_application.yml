@@ -1,0 +1,81 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: Ensure application user exists
+      user:
+        name: "{{ application_user }}"
+
+    - name: Prepare application directory
+      file:
+        path: "/home/{{ application_user }}/app"
+        state: directory
+        owner: "{{ application_user }}"
+        group: "{{ application_user }}"
+        mode: u=rwx,g=rx,o=
+
+    - name: Download tarball
+      get_url:
+        url: "https://github.com/caddyserver/caddy/releases/download/v{{ application_version }}/caddy_{{ application_version }}_linux_arm64.tar.gz"
+        dest: "/home/{{ application_user }}/app.tar.gz"
+        owner: "{{ application_user }}"
+        group: "{{ application_user }}"
+        mode: u=rw,g=r,o=r
+
+    - name: Extract tarball
+      unarchive:
+        src: "/home/{{ application_user }}/app.tar.gz"
+        dest: "/home/{{ application_user }}/app"
+        remote_src: true
+        owner: "{{ application_user }}"
+        group: "{{ application_user }}"
+        mode: u=rwx,g=rx,o=
+
+    - name: Set executable permissions
+      file:
+        path: "/home/{{ application_user }}/app/caddy"
+        mode: u=rwx,g=rx,o=rx
+        owner: "{{ application_user }}"
+        group: "{{ application_user }}"
+
+    - name: Create config file
+      copy:
+        content: |
+          :8080
+          respond "Hello from {{ application_name }} {{ application_version }}!"
+        dest: "/home/{{ application_user }}/app/Caddyfile"
+        mode: u=rw,g=r,o=r
+
+    - name: Prepare systemd local services directory
+      command: mkdir -pv /usr/local/lib/systemd/system
+      register: systemd_user_service_directory
+      changed_when: systemd_user_service_directory.stdout != ""
+
+    - name: Ensure systemd service exists
+      copy:
+        content: |
+          [Unit]
+          Description={{ application_name }}
+          After=network.target
+
+          [Service]
+          ExecStart=/home/{{ application_user }}/app/caddy run --config /home/{{ application_user }}/app/Caddyfile
+          Restart=on-failure
+          User={{ application_user }}
+          Group={{ application_user }}
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "/usr/local/lib/systemd/system/{{ application_service }}.service"
+        mode: u=rw,g=r,o=r
+      register: systemd_service
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: true
+      when: systemd_service.changed
+
+    - name: Start and enable systemd service
+      systemd:
+        name: "{{ application_service }}"
+        state: "{% if systemd_service.changed %}restarted{% else %}started{% endif %}"
+        enabled: true

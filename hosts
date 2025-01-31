@@ -1,0 +1,1 @@
+my-server ansible_host=192.168.228.128 ansible_user=vagrant
